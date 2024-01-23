@@ -22,7 +22,7 @@
     - [3.1 Checkstyle](#31-checkstyle)
     - [3.2 Jacoco](#32-jacoco)
     - [3.3 Hadolint](#33-hadolint)
-  - [4. Swagger API Documentation](#4-swagger-api-documentation)
+  - [4. API Documentation](#4-api-documentation)
   - [5. DevSecOps](#5-devsecops)
     - [5.1 Dependency Vulnerability Check](#51-dependency-vulnerability-check)
     - [5.2 Docker Image Vulnerability Check](#52-docker-image-vulnerability-check)
@@ -64,7 +64,7 @@ to the Companies House API hence returning Company Details.
 
 ### Prerequisites
 
-- You must have >= Java 17 Installed. You can use [SDKMAN](https://sdkman.io/install) for maintaining different JDK's in your system.
+- You must have >= Java 21 Installed. You can use [SDKMAN](https://sdkman.io/install) for maintaining different JDK's in your system.
 - If you wish to run the application against the actual Companies House
   API and then you will need to [create a free account](https://developer.companieshouse.gov.uk/developer/signin).
   Once created replace the `authUserName` in the [application.yaml](src/main/resources/application.yaml) under main dir.
@@ -324,17 +324,24 @@ Example: Execute from the root of this repo as we have 2 dockerfiles in this rep
 ```bash
 hadolint testhadolinttest.Dockerfile
 ```
-or
-```bash
-hadolint testhadolinttest.Dockerfile
-```
 
 or you may directly run using the docker as below:
 ```bash
 docker run --rm hadolint/hadolint < testhadolinttest.Dockerfile
 ```
 
-The linting errors are fixed in [Dockerfile](./Dockerfile).
+Expected Output:
+```agsl
+testhadolinttest.Dockerfile:8 DL3018 warning: Pin versions in apk add. Instead of `apk add <package>` use `apk add <package>=<version>`
+testhadolinttest.Dockerfile:8 DL3019 info: Use the `--no-cache` switch to avoid the need to use `--update` and remove `/var/cache/apk/*` when done installing packages
+
+```
+
+Fix:  Pin versions in apk add and Use the `--no-cache` as shown below:
+```agsl
+RUN apk add --no-cache --upgrade libtasn1=4.14-r0 sqlite-libs=3.28.0-r3 musl-utils=1.1.20-r6 libjpeg-turbo=1.5.3-r6 \
+libx11=1.6.12-r0 freetype=2.9.1-r3
+```
 
 In pipeline:
 
@@ -342,7 +349,7 @@ We can use hadolint to lint dockerfile in the pipeline before building the image
 
 Hadolint allows us to add configuration file to configure rules to ignore errors, trusted registries etc, [click here](https://github.com/hadolint/hadolint#configure) to learn more.
 
-### 4. Swagger API Documentation
+### 4. API Documentation
 
 With the latest version of [SpringDoc-API](https://springdoc.org/v2/) you just need to include a single dependency as below & that's it.
 ```bash
@@ -351,7 +358,7 @@ implementation "org.springdoc:springdoc-openapi-starter-webmvc-ui:2.0.4"
 
 This library supports:
 - OpenAPI 3
-- Spring-boot v3 (Java 17 & Jakarta EE 9)
+- Spring-boot v3 (Java 21 & Jakarta EE 9)
 - JSR-303, specifically for @NotNull, @Min, @Max, and @Size.
 - Swagger-ui
 - OAuth 2
@@ -393,7 +400,8 @@ In this repo we are looking at some of the key practices to secure the applicati
 
   ```bash
   plugin {
-    id "org.owasp.dependencycheck" version "5.3.2.1"
+    # The version may change, please check the build.gradle for the latest version used in t he project
+    id "org.owasp.dependencycheck" version "9.0.8"
   }
   dependencyCheck {
       // the default artifact types that will be analyzed.
@@ -405,8 +413,6 @@ In this repo we are looking at some of the key practices to secure the applicati
       outputDirectory = "build/reports/dependency-vulnerabilities"
       // specify a list of known issues which contain false-positives
       suppressionFiles = ["$projectDir/config/dependencycheck/dependency-check-suppression.xml"]
-      // Sets the number of hours to wait before checking for new updates from the NVD, defaults to 4.
-      cveValidForHours = 24
   }
   ```
 
@@ -480,7 +486,7 @@ To learn how to containerize application [click here.](#61-docker-containerizati
    Scanning Remote Image (e.g. Docker Hub)
    ```bash
    Syntax : docker run -it aquasec/trivy:latest [DOCKER_HUB_REPO]/[DOCKER_IMAGE_NAME]:[TAG]
-   Example: docker run -it aquasec/trivy:latest openjdk:17-jre-alpine
+   Example: docker run -it aquasec/trivy:latest openjdk:21-slim
    ```
    Once executed successfully it output a tabular report by default(which can be changed).
 
@@ -626,7 +632,7 @@ Docker uses a text file with set of instructions in it to build a docker image. 
 Now let us have a quick look at our [ci.Dockerfile](./ci.Dockerfile) given below:
 
   ```bash
-  FROM openjdk:17-jre-alpine
+  FROM openjdk:21-slim
 
   WORKDIR /opt
 
@@ -641,7 +647,7 @@ Now let us have a quick look at our [ci.Dockerfile](./ci.Dockerfile) given below
   ENTRYPOINT exec java $JAVA_OPTS -jar companieshouse-0.0.1-SNAPSHOT.jar
   ```
 
-  - First instruction FROM is used for pulling openjdk:17-jre-alpine from Docker Hub
+  - First instruction FROM is used for pulling openjdk:21-slim from Docker Hub
   - WORKDIR sets the opt as working directory
   - RUN As this is an Alpine image we are using apk to update the image dependencies
   - ARG set an argument to be used later in the file
@@ -653,7 +659,7 @@ Although in a real world scenario you will typically have only 1 Dockerfile but 
 
 6.1.1 [Dockerfile](./Dockerfile):
 
-It uses an intermediate **gradle:7.6.1-jdk17** container for building an executable jar and then **openjdk:17** as a base image  by copying the jar for application docker image.</br>
+It uses an intermediate **gradle:8.5-jdk21** container for building an executable jar and then **openjdk:21-slim** as a base image  by copying the jar for application docker image.</br>
 This Dockerfile will be handy and is an example of using intermediate containers when we do not have respective runtime (JAVA) & package manager (gradle) installed locally for building the executable application.
 
 - Execute below command to build a docker image, if no docker file is specified in CLI it defaults to **Dockerfile**.

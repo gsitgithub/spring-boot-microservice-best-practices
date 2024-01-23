@@ -1,4 +1,6 @@
 version: 2.1
+orbs:
+  snyk: snyk/snyk@2.0.2
 executors:
   base-jdk21:
     docker:
@@ -25,6 +27,9 @@ executors:
   loadimpact-k6:
     docker:
       - image: loadimpact/k6
+  cimg-jdk21:
+    docker:
+      - image: cimg/openjdk:21.0.0
 
 aliases:
   - &mount_workspace
@@ -38,15 +43,15 @@ aliases:
     restore_cache:
       keys:
         - v2-gradle-cache-{{ checksum "build.gradle" }}
-  - &save_dependency_vulnerability_cache
+  - &save_dependencycheck_vulnerability_cache
     save_cache:
-      key: v2-dependency-cache-{{ checksum "build.gradle" }}
+      key: v1-dependencycheck-cache-{{ checksum "build.gradle" }}
       paths:
-        - /home/circleci/.gradle/dependency-check-data/5.0/
-  - &restore_dependency_vulnerability_cache
+        - ~/.gradle/dependency-check-data/7.0/
+  - &restore_dependencycheck_vulnerability_cache
     restore_cache:
       keys:
-        - v2-dependency-cache-{{ checksum "build.gradle" }}
+        - v1-dependencycheck-cache-{{ checksum "build.gradle" }}
   - &only_allowed_branches
     filters:
       branches:
@@ -130,6 +135,13 @@ jobs:
       - store_artifacts:
           path: << parameters.artifact_path >>
           when: always
+  static_code_analysis:
+    executor: cimg-jdk21
+    steps:
+      - checkout
+      - snyk/scan:
+          token-variable: SNYK_TOKEN
+          command: code test
   check_dependency_vulnerability:
     executor: base-jdk21
     parameters:
@@ -143,12 +155,12 @@ jobs:
       - checkout
       - *restore_gradlew_cache
       - *restore_gradle_cache
-      - *restore_dependency_vulnerability_cache
+      - *restore_dependencycheck_vulnerability_cache
       - run:
           name: Perform Dependency Vulnerability Checks
           no_output_timeout: << parameters.timeout >>
-          command: ./gradlew dependencyCheckAnalyze
-      - *save_dependency_vulnerability_cache
+          command: ./gradlew dependencyCheckAnalyze -PUseNVDKey
+      - *save_dependencycheck_vulnerability_cache
       - store_test_results:
           path: build/reports/dependency-vulnerabilities
           when: always
@@ -277,13 +289,11 @@ workflows:
           artifact_path: build/reports/jacocoHtml
           requires:
             - Unit & E2E Tests
-#      - gradle_execute_task:
-#          name: Checkstyle
-#          step_name: Check styling and generate report
-#          gradle_task: check
-#          artifact_path: build/reports/checkstyle
-#          requires:
-#            - Build
+      - static_code_analysis:
+          <<: *credential_context
+          name: Snyk Static Code Analysis
+          requires:
+            - Build
       - gradle_execute_task:
           name: Mutation Tests
           step_name: Perform Mutation Testing on Unit Tests
@@ -292,6 +302,7 @@ workflows:
           requires:
             - Build
       - check_dependency_vulnerability:
+          <<: *credential_context
           name: Dependency Vulnerability Checks
           timeout: 25m
           requires:
@@ -301,7 +312,7 @@ workflows:
           name: Docker Lint Build Scan Push
           requires:
             - Jacoco Code Coverage
-#            - Checkstyle
+            - Snyk Static Code Analysis
             - Mutation Tests
             - Dependency Vulnerability Checks
       - hold:
@@ -346,6 +357,7 @@ workflows:
           <<: *only_master
     jobs:
       - check_dependency_vulnerability:
+          <<: *credential_context
           name: Dependency Vulnerability Checks
           timeout: 20m
       - check_image_vulnerability:
